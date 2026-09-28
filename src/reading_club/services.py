@@ -1,5 +1,7 @@
 """Application services implementing reading-club domain operations."""
 
+import secrets
+from collections.abc import Callable, Sequence
 from typing import TypeVar
 from uuid import UUID
 
@@ -7,12 +9,22 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from reading_club.models import Book, Membership, ReadingGroup, Review, User, Vote
+from reading_club.models import (
+    Book,
+    Membership,
+    MembershipRole,
+    ReadingGroup,
+    Review,
+    Selection,
+    User,
+    Vote,
+)
 from reading_club.repositories import (
     BookRepository,
     GroupRepository,
     MembershipRepository,
     ReviewRepository,
+    SelectionRepository,
     UserRepository,
     VoteRepository,
 )
@@ -24,16 +36,22 @@ from reading_club.schemas import (
     MembershipCreate,
     ReviewCreate,
     ReviewUpdate,
+    SelectionCreate,
     UserCreate,
     UserUpdate,
     VoteCreate,
 )
 
-Model = TypeVar("Model", User, ReadingGroup, Membership, Book, Review, Vote)
+Model = TypeVar("Model", User, ReadingGroup, Membership, Book, Review, Vote, Selection)
+SelectionStrategy = Callable[[Sequence[UUID]], UUID]
 
 
 class ReadingClubService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        selection_strategy: SelectionStrategy = secrets.choice,
+    ) -> None:
         self.session = session
         self.users = UserRepository(session)
         self.groups = GroupRepository(session)
@@ -41,6 +59,8 @@ class ReadingClubService:
         self.books = BookRepository(session)
         self.reviews = ReviewRepository(session)
         self.votes = VoteRepository(session)
+        self.selections = SelectionRepository(session)
+        self.selection_strategy = selection_strategy
 
     async def create_user(self, data: UserCreate) -> User:
         if await self.users.get_by_email(data.email):
@@ -202,10 +222,60 @@ class ReadingClubService:
         await self.session.delete(vote)
         await self._commit()
 
+    async def create_selection(
+        self, group_id: UUID, data: SelectionCreate
+    ) -> Selection:
+        await self.get_group(group_id)
+        await self._require_active_admin(group_id, data.requested_by_user_id)
+        candidate_book_ids = await self.votes.list_candidate_book_ids(group_id)
+        if not candidate_book_ids:
+            self._conflict("No voted-for books are available to select")
+        book_id = self.selection_strategy(candidate_book_ids)
+        if book_id not in candidate_book_ids:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Selection strategy chose an ineligible book",
+            )
+        selection = Selection(
+            group_id=group_id,
+            book_id=book_id,
+            requested_by_user_id=data.requested_by_user_id,
+            candidate_count=len(candidate_book_ids),
+            candidate_book_ids=[
+                str(candidate_id) for candidate_id in candidate_book_ids
+            ],
+        )
+        self.session.add(selection)
+        return await self._save(selection)
+
+    async def list_selections(self, group_id: UUID) -> list[Selection]:
+        await self.get_group(group_id)
+        return await self.selections.list_for_group(group_id)
+
+    async def get_latest_selection(self, group_id: UUID) -> Selection:
+        await self.get_group(group_id)
+        selection = await self.selections.latest_for_group(group_id)
+        if selection is None:
+            self._not_found("Selection")
+        return selection  # type: ignore[return-value]
+
     async def _require_active_member(self, group_id: UUID, user_id: UUID) -> None:
         user = await self.get_user(user_id)
         if not user.is_active or await self.memberships.get(group_id, user_id) is None:
             self._not_found("Membership")
+
+    async def _require_active_admin(self, group_id: UUID, user_id: UUID) -> None:
+        user = await self.get_user(user_id)
+        membership = await self.memberships.get(group_id, user_id)
+        if (
+            not user.is_active
+            or membership is None
+            or membership.role != MembershipRole.ADMIN
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="An active group admin is required to select a book",
+            )
 
     async def _save(self, instance: Model) -> Model:
         await self._commit()

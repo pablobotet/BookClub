@@ -227,3 +227,17 @@ class VoteResponse(APIModel):
     book_id: UUID
     user_id: UUID
     created_at: datetime
+
+
+class SelectionCreate(APIModel):
+    requested_by_user_id: UUID
+
+
+class SelectionResponse(APIModel):
+    id: UUID
+    group_id: UUID
+    book_id: UUID
+    requested_by_user_id: UUID
+    candidate_count: int
+    candidate_book_ids: list[UUID]
+    created_at: datetime

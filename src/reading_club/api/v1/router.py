@@ -18,6 +18,8 @@ from reading_club.schemas import (
     ReviewCreate,
     ReviewResponse,
     ReviewUpdate,
+    SelectionCreate,
+    SelectionResponse,
     UserCreate,
     UserResponse,
     UserUpdate,
@@ -229,3 +231,39 @@ async def remove_vote(
 ) -> Response:
     await service.remove_vote(group_id, vote_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/groups/{group_id}/selections",
+    response_model=SelectionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_selection(
+    group_id: UUID,
+    data: SelectionCreate,
+    service: ReadingClubService = Depends(get_service),
+) -> SelectionResponse:
+    return SelectionResponse.model_validate(
+        await service.create_selection(group_id, data)
+    )
+
+
+@router.get("/groups/{group_id}/selections", response_model=list[SelectionResponse])
+async def list_selections(
+    group_id: UUID, service: ReadingClubService = Depends(get_service)
+) -> list[SelectionResponse]:
+    return [
+        SelectionResponse.model_validate(selection)
+        for selection in await service.list_selections(group_id)
+    ]
+
+
+@router.get(
+    "/groups/{group_id}/selections/latest", response_model=SelectionResponse
+)
+async def get_latest_selection(
+    group_id: UUID, service: ReadingClubService = Depends(get_service)
+) -> SelectionResponse:
+    return SelectionResponse.model_validate(
+        await service.get_latest_selection(group_id)
+    )

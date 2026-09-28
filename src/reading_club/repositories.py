@@ -5,7 +5,15 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from reading_club.models import Book, Membership, ReadingGroup, Review, User, Vote
+from reading_club.models import (
+    Book,
+    Membership,
+    ReadingGroup,
+    Review,
+    Selection,
+    User,
+    Vote,
+)
 
 
 class UserRepository:
@@ -142,4 +150,40 @@ class VoteRepository:
                     .order_by(Vote.created_at)
                 )
             ).all()
+        )
+
+    async def list_candidate_book_ids(self, group_id: UUID) -> list[UUID]:
+        return list(
+            (
+                await self.session.scalars(
+                    select(Vote.book_id)
+                    .where(Vote.group_id == group_id)
+                    .distinct()
+                    .order_by(Vote.book_id)
+                )
+            ).all()
+        )
+
+
+class SelectionRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def list_for_group(self, group_id: UUID) -> list[Selection]:
+        return list(
+            (
+                await self.session.scalars(
+                    select(Selection)
+                    .where(Selection.group_id == group_id)
+                    .order_by(Selection.created_at.desc(), Selection.id.desc())
+                )
+            ).all()
+        )
+
+    async def latest_for_group(self, group_id: UUID) -> Selection | None:
+        return await self.session.scalar(
+            select(Selection)
+            .where(Selection.group_id == group_id)
+            .order_by(Selection.created_at.desc(), Selection.id.desc())
+            .limit(1)
         )

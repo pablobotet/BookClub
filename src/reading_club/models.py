@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     DateTime,
     Enum,
@@ -57,6 +58,9 @@ class User(TimestampedModel, Base):
     memberships: Mapped[list[Membership]] = relationship(back_populates="user")
     reviews: Mapped[list[Review]] = relationship(back_populates="user")
     votes: Mapped[list[Vote]] = relationship(back_populates="user")
+    requested_selections: Mapped[list[Selection]] = relationship(
+        back_populates="requested_by"
+    )
 
 
 class ReadingGroup(TimestampedModel, Base):
@@ -72,6 +76,7 @@ class ReadingGroup(TimestampedModel, Base):
     memberships: Mapped[list[Membership]] = relationship(back_populates="group")
     reviews: Mapped[list[Review]] = relationship(back_populates="group")
     votes: Mapped[list[Vote]] = relationship(back_populates="group")
+    selections: Mapped[list[Selection]] = relationship(back_populates="group")
 
 
 class Membership(Base):
@@ -123,6 +128,7 @@ class Book(TimestampedModel, Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviews: Mapped[list[Review]] = relationship(back_populates="book")
     votes: Mapped[list[Vote]] = relationship(back_populates="book")
+    selections: Mapped[list[Selection]] = relationship(back_populates="book")
 
 
 class Review(TimestampedModel, Base):
@@ -183,3 +189,36 @@ class Vote(Base):
     group: Mapped[ReadingGroup] = relationship(back_populates="votes")
     book: Mapped[Book] = relationship(back_populates="votes")
     user: Mapped[User] = relationship(back_populates="votes")
+
+
+class Selection(Base):
+    """An immutable record of a group's random next-book draw."""
+
+    __tablename__ = "selections"
+    __table_args__ = (
+        CheckConstraint("candidate_count > 0", name="ck_selections_candidate_count"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("reading_groups.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    book_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("books.id"), nullable=False, index=True
+    )
+    requested_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id"), nullable=False, index=True
+    )
+    candidate_count: Mapped[int] = mapped_column(nullable=False)
+    candidate_book_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+    group: Mapped[ReadingGroup] = relationship(back_populates="selections")
+    book: Mapped[Book] = relationship(back_populates="selections")
+    requested_by: Mapped[User] = relationship(back_populates="requested_selections")
