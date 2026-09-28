@@ -1,0 +1,131 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md"
+  ],
+  "default_agent": "orchestrator",
+  "subagent_depth": 1,
+  "agent": {
+    "orchestrator": {
+      "description": "Coordinates non-trivial development work through planning, implementation, and independent verification.",
+      "mode": "primary",
+      "model": "ibm1/gpt-5.6-sol",
+      "prompt": "{file:./.opencode/prompts/orchestrator.txt}",
+      "temperature": 0.1,
+      "options": {
+        "reasoningEffort": "high"
+      },
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git push*": "deny",
+          "git reset*": "deny",
+          "git checkout*": "deny",
+          "rm -rf*": "deny"
+        },
+        "task": {
+          "*": "deny",
+          "implementer": "allow",
+          "verifier": "allow"
+        },
+        "todowrite": "allow",
+        "question": "allow"
+      }
+    },
+    "implementer": {
+      "description": "Implements one narrowly scoped task from the coordinator and runs its focused validation.",
+      "mode": "subagent",
+      "model": "ibm1/gpt-5.6-terra",
+      "prompt": "{file:./.opencode/prompts/implementer.txt}",
+      "temperature": 0.1,
+      "permission": {
+        "edit": "allow",
+        "bash": {
+          "*": "allow",
+          "git push*": "deny",
+          "git reset*": "deny",
+          "git checkout*": "deny",
+          "rm -rf*": "deny"
+        },
+        "task": "deny",
+        "todowrite": "deny"
+      }
+    },
+    "verifier": {
+      "description": "Independently checks one completed implementation task and returns PASS, FAIL, or BLOCKED with evidence.",
+      "mode": "subagent",
+      "model": "ibm1/gpt-5.6-terra",
+      "prompt": "{file:./.opencode/prompts/verifier.txt}",
+      "temperature": 0.1,
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "allow",
+          "git push*": "deny",
+          "git reset*": "deny",
+          "git checkout*": "deny",
+          "rm -rf*": "deny"
+        },
+        "task": "deny",
+        "todowrite": "deny"
+      }
+    },
+    "quick-change": {
+      "description": "Makes a small, explicit, localized change directly without using the coordinated workflow.",
+      "mode": "primary",
+      "model": "ibm1/gpt-5.6-luna",
+      "prompt": "{file:./.opencode/prompts/quick-change.txt}",
+      "temperature": 0.1,
+      "steps": 12,
+      "permission": {
+        "edit": "allow",
+        "bash": {
+          "*": "ask",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git push*": "deny",
+          "git reset*": "deny",
+          "git checkout*": "deny",
+          "rm -rf*": "deny"
+        },
+        "task": "deny",
+        "todowrite": "deny"
+      }
+    },
+    "chat": {
+      "description": "Answers questions using only the current conversation, without reading the project or using external tools.",
+      "mode": "primary",
+      "model": "ibm1/gpt-5.6-luna",
+      "prompt": "{file:./.opencode/prompts/chat.txt}",
+      "temperature": 0.2,
+      "permission": {
+        "read": "deny",
+        "edit": "deny",
+        "glob": "deny",
+        "grep": "deny",
+        "list": "deny",
+        "bash": "deny",
+        "task": "deny",
+        "external_directory": "deny",
+        "todowrite": "deny",
+        "question": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "lsp": "deny",
+        "skill": "deny"
+      }
+    }
+  },
+  "command": {
+    "flow": {
+      "description": "Run a request through the planning, implementation, and verification workflow.",
+      "agent": "orchestrator",
+      "template": "Coordinate this request end to end using the configured workflow:\n\n$ARGUMENTS"
+    }
+  }
+}
