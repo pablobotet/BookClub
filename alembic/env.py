@@ -8,6 +8,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, async_engine_from_config
 
 from alembic import context
+from reading_club import models  # noqa: F401
 from reading_club.config import get_settings
 from reading_club.db import Base
 

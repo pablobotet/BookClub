@@ -1,7 +1,8 @@
 # Reading Club API
 
-A local FastAPI backend for a reading club. Milestone 1 provides only the
-application foundation; no domain entities or domain endpoints exist yet.
+A local FastAPI backend for a reading club. Milestone 2 provides managed user
+profiles, reading groups, and group memberships; authentication and ownership
+semantics are intentionally not implemented yet.
 
 ## Prerequisites
 
@@ -26,6 +27,19 @@ uvicorn reading_club.main:app --reload
 ```
 
 The health endpoint is available at `http://127.0.0.1:8000/health`.
+
+## API v1
+
+- `POST`, `GET`, `GET /{id}`, and `PATCH /{id}` for `/api/v1/users`
+- `POST`, `GET`, `GET /{id}`, and `PATCH /{id}` for `/api/v1/groups`
+- `POST /api/v1/groups/{group_id}/members` adds a user as `member` (default)
+  or `admin`.
+- `GET /api/v1/groups/{group_id}/members` lists group memberships.
+- `DELETE /api/v1/groups/{group_id}/members/{user_id}` removes a membership.
+
+Emails are stored lowercase. User email, group name, and user/group
+memberships are unique. Creating a group does not automatically create a
+membership because there is no authenticated current user yet.
 
 ## Test and quality checks
 

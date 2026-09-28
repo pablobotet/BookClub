@@ -9,7 +9,7 @@ from reading_club.config import get_settings
 
 
 class Base(DeclarativeBase):
-    """Base class for future SQLAlchemy models."""
+    """Base class for SQLAlchemy models."""
 
 
 engine = create_async_engine(get_settings().database_url)
