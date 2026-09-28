@@ -1,8 +1,8 @@
 # Reading Club API
 
-A local FastAPI backend for a reading club. Milestone 2 provides managed user
-profiles, reading groups, and group memberships; authentication and ownership
-semantics are intentionally not implemented yet.
+A local FastAPI backend for a reading club. Milestone 3 provides managed user
+profiles, reading groups, memberships, a global book catalog, and group-scoped
+reviews and votes; authentication is intentionally not implemented yet.
 
 ## Prerequisites
 
@@ -36,10 +36,17 @@ The health endpoint is available at `http://127.0.0.1:8000/health`.
   or `admin`.
 - `GET /api/v1/groups/{group_id}/members` lists group memberships.
 - `DELETE /api/v1/groups/{group_id}/members/{user_id}` removes a membership.
+- `POST`, `GET`, `GET /{id}`, and `PATCH /{id}` for `/api/v1/books`.
+- `POST` and `GET /api/v1/groups/{group_id}/reviews`, plus `GET` and `PATCH`
+  for `/api/v1/groups/{group_id}/reviews/{review_id}`.
+- `POST` and `GET /api/v1/groups/{group_id}/votes`; `DELETE` retracts a vote.
 
 Emails are stored lowercase. User email, group name, and user/group
 memberships are unique. Creating a group does not automatically create a
-membership because there is no authenticated current user yet.
+membership because there is no authenticated current user yet. ISBNs are unique
+when supplied. Reviews and votes require an active user who belongs to the
+group; request bodies carry `user_id` until authentication exists. A member may
+review or vote for a specific book only once per group.
 
 ## Test and quality checks
 

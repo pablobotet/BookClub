@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 from reading_club.models import MembershipRole
 
@@ -115,3 +123,107 @@ class MembershipResponse(APIModel):
     group_id: UUID
     role: MembershipRole
     joined_at: datetime
+
+
+class BookCreate(APIModel):
+    title: str = Field(min_length=1, max_length=255)
+    author: str = Field(min_length=1, max_length=255)
+    isbn: str | None = Field(default=None, max_length=32)
+    publication_year: StrictInt | None = Field(default=None, ge=1)
+    description: str | None = None
+
+    @field_validator("title", "author")
+    @classmethod
+    def normalize_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("value must not be empty")
+        return normalized
+
+    @field_validator("isbn")
+    @classmethod
+    def normalize_isbn(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = re.sub(r"[-\s]", "", value).upper()
+        return normalized or None
+
+
+class BookUpdate(APIModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    author: str | None = Field(default=None, min_length=1, max_length=255)
+    isbn: str | None = Field(default=None, max_length=32)
+    publication_year: StrictInt | None = Field(default=None, ge=1)
+    description: str | None = None
+
+    @field_validator("title", "author")
+    @classmethod
+    def normalize_text(cls, value: str | None) -> str | None:
+        return BookCreate.normalize_text(value)
+
+    @field_validator("isbn")
+    @classmethod
+    def normalize_isbn(cls, value: str | None) -> str | None:
+        return BookCreate.normalize_isbn(value)
+
+    @model_validator(mode="after")
+    def require_update(self) -> BookUpdate:
+        if not self.model_fields_set:
+            raise ValueError("at least one field must be supplied")
+        return self
+
+
+class BookResponse(APIModel):
+    id: UUID
+    title: str
+    author: str
+    isbn: str | None
+    publication_year: int | None
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReviewCreate(APIModel):
+    book_id: UUID
+    user_id: UUID
+    rating: int = Field(ge=1, le=5)
+    text: str | None = None
+
+
+class ReviewUpdate(APIModel):
+    user_id: UUID
+    rating: int | None = Field(default=None, ge=1, le=5)
+    text: str | None = None
+
+    @model_validator(mode="after")
+    def require_update(self) -> ReviewUpdate:
+        if not ({"rating", "text"} & self.model_fields_set):
+            raise ValueError("at least one field must be supplied")
+        return self
+
+
+class ReviewResponse(APIModel):
+    id: UUID
+    group_id: UUID
+    book_id: UUID
+    user_id: UUID
+    rating: int
+    text: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class VoteCreate(APIModel):
+    book_id: UUID
+    user_id: UUID
+
+
+class VoteResponse(APIModel):
+    id: UUID
+    group_id: UUID
+    book_id: UUID
+    user_id: UUID
+    created_at: datetime

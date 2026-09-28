@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from reading_club.models import Membership, ReadingGroup, User
+from reading_club.models import Book, Membership, ReadingGroup, Review, User, Vote
 
 
 class UserRepository:
@@ -64,6 +64,82 @@ class MembershipRepository:
                     select(Membership)
                     .where(Membership.group_id == group_id)
                     .order_by(Membership.joined_at)
+                )
+            ).all()
+        )
+
+
+class BookRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def get(self, book_id: UUID) -> Book | None:
+        return await self.session.get(Book, book_id)
+
+    async def get_by_isbn(self, isbn: str) -> Book | None:
+        return await self.session.scalar(select(Book).where(Book.isbn == isbn))
+
+    async def list(self) -> list[Book]:
+        return list(
+            (await self.session.scalars(select(Book).order_by(Book.created_at))).all()
+        )
+
+
+class ReviewRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def get(self, review_id: UUID) -> Review | None:
+        return await self.session.get(Review, review_id)
+
+    async def get_for_user_book(
+        self, group_id: UUID, user_id: UUID, book_id: UUID
+    ) -> Review | None:
+        return await self.session.scalar(
+            select(Review).where(
+                Review.group_id == group_id,
+                Review.user_id == user_id,
+                Review.book_id == book_id,
+            )
+        )
+
+    async def list_for_group(self, group_id: UUID) -> list[Review]:
+        return list(
+            (
+                await self.session.scalars(
+                    select(Review)
+                    .where(Review.group_id == group_id)
+                    .order_by(Review.created_at)
+                )
+            ).all()
+        )
+
+
+class VoteRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def get(self, vote_id: UUID) -> Vote | None:
+        return await self.session.get(Vote, vote_id)
+
+    async def get_for_user_book(
+        self, group_id: UUID, user_id: UUID, book_id: UUID
+    ) -> Vote | None:
+        return await self.session.scalar(
+            select(Vote).where(
+                Vote.group_id == group_id,
+                Vote.user_id == user_id,
+                Vote.book_id == book_id,
+            )
+        )
+
+    async def list_for_group(self, group_id: UUID) -> list[Vote]:
+        return list(
+            (
+                await self.session.scalars(
+                    select(Vote)
+                    .where(Vote.group_id == group_id)
+                    .order_by(Vote.created_at)
                 )
             ).all()
         )

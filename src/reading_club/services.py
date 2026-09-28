@@ -7,21 +7,29 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from reading_club.models import Membership, ReadingGroup, User
+from reading_club.models import Book, Membership, ReadingGroup, Review, User, Vote
 from reading_club.repositories import (
+    BookRepository,
     GroupRepository,
     MembershipRepository,
+    ReviewRepository,
     UserRepository,
+    VoteRepository,
 )
 from reading_club.schemas import (
+    BookCreate,
+    BookUpdate,
     GroupCreate,
     GroupUpdate,
     MembershipCreate,
+    ReviewCreate,
+    ReviewUpdate,
     UserCreate,
     UserUpdate,
+    VoteCreate,
 )
 
-Model = TypeVar("Model", User, ReadingGroup, Membership)
+Model = TypeVar("Model", User, ReadingGroup, Membership, Book, Review, Vote)
 
 
 class ReadingClubService:
@@ -30,6 +38,9 @@ class ReadingClubService:
         self.users = UserRepository(session)
         self.groups = GroupRepository(session)
         self.memberships = MembershipRepository(session)
+        self.books = BookRepository(session)
+        self.reviews = ReviewRepository(session)
+        self.votes = VoteRepository(session)
 
     async def create_user(self, data: UserCreate) -> User:
         if await self.users.get_by_email(data.email):
@@ -107,6 +118,94 @@ class ReadingClubService:
             self._not_found("Membership")
         await self.session.delete(membership)
         await self._commit()
+
+    async def create_book(self, data: BookCreate) -> Book:
+        if data.isbn is not None and await self.books.get_by_isbn(data.isbn):
+            self._conflict("A book with this ISBN already exists")
+        book = Book(**data.model_dump())
+        self.session.add(book)
+        return await self._save(book)
+
+    async def list_books(self) -> list[Book]:
+        return await self.books.list()
+
+    async def get_book(self, book_id: UUID) -> Book:
+        book = await self.books.get(book_id)
+        if book is None:
+            self._not_found("Book")
+        return book  # type: ignore[return-value]
+
+    async def update_book(self, book_id: UUID, data: BookUpdate) -> Book:
+        book = await self.get_book(book_id)
+        changes = data.model_dump(exclude_unset=True)
+        isbn = changes.get("isbn")
+        if isbn is not None:
+            existing = await self.books.get_by_isbn(isbn)
+            if existing is not None and existing.id != book.id:
+                self._conflict("A book with this ISBN already exists")
+        for field, value in changes.items():
+            setattr(book, field, value)
+        return await self._save(book)
+
+    async def create_review(self, group_id: UUID, data: ReviewCreate) -> Review:
+        await self.get_group(group_id)
+        await self.get_book(data.book_id)
+        await self._require_active_member(group_id, data.user_id)
+        if await self.reviews.get_for_user_book(group_id, data.user_id, data.book_id):
+            self._conflict("User has already reviewed this book in this group")
+        review = Review(group_id=group_id, **data.model_dump())
+        self.session.add(review)
+        return await self._save(review)
+
+    async def list_reviews(self, group_id: UUID) -> list[Review]:
+        await self.get_group(group_id)
+        return await self.reviews.list_for_group(group_id)
+
+    async def get_review(self, group_id: UUID, review_id: UUID) -> Review:
+        await self.get_group(group_id)
+        review = await self.reviews.get(review_id)
+        if review is None or review.group_id != group_id:
+            self._not_found("Review")
+        return review  # type: ignore[return-value]
+
+    async def update_review(
+        self, group_id: UUID, review_id: UUID, data: ReviewUpdate
+    ) -> Review:
+        review = await self.get_review(group_id, review_id)
+        await self._require_active_member(group_id, data.user_id)
+        if review.user_id != data.user_id:
+            self._not_found("Review")
+        changes = data.model_dump(exclude={"user_id"}, exclude_unset=True)
+        for field, value in changes.items():
+            setattr(review, field, value)
+        return await self._save(review)
+
+    async def create_vote(self, group_id: UUID, data: VoteCreate) -> Vote:
+        await self.get_group(group_id)
+        await self.get_book(data.book_id)
+        await self._require_active_member(group_id, data.user_id)
+        if await self.votes.get_for_user_book(group_id, data.user_id, data.book_id):
+            self._conflict("User has already voted for this book in this group")
+        vote = Vote(group_id=group_id, **data.model_dump())
+        self.session.add(vote)
+        return await self._save(vote)
+
+    async def list_votes(self, group_id: UUID) -> list[Vote]:
+        await self.get_group(group_id)
+        return await self.votes.list_for_group(group_id)
+
+    async def remove_vote(self, group_id: UUID, vote_id: UUID) -> None:
+        await self.get_group(group_id)
+        vote = await self.votes.get(vote_id)
+        if vote is None or vote.group_id != group_id:
+            self._not_found("Vote")
+        await self.session.delete(vote)
+        await self._commit()
+
+    async def _require_active_member(self, group_id: UUID, user_id: UUID) -> None:
+        user = await self.get_user(user_id)
+        if not user.is_active or await self.memberships.get(group_id, user_id) is None:
+            self._not_found("Membership")
 
     async def _save(self, instance: Model) -> Model:
         await self._commit()
