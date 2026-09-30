@@ -61,12 +61,39 @@ votes are not removed, so repeated draws are allowed and auditable.
 ## Test and quality checks
 
 ```bash
-pytest
+pytest -m 'not integration'  # fast suite; PostgreSQL is not required
+TEST_DATABASE_URL=... pytest -m integration
+TEST_DATABASE_URL=... pytest  # full suite
 ruff check .
 mypy
 ```
 
-The test suite does not need PostgreSQL to be running.
+Integration tests are skipped with a clear reason when `TEST_DATABASE_URL` is not
+set. They truncate all application tables before and after every test, so they
+must only target the dedicated `reading_club_test` database and must not run
+concurrently against a shared test database.
+
+### PostgreSQL integration-test setup
+
+PostgreSQL and `psql` must be installed, and the local PostgreSQL role must be
+allowed to create databases (or `TEST_DATABASE_ADMIN_URL` must be configured).
+Never point these tests at the application database.
+
+```bash
+cp .env.test.example .env.test
+# Edit .env.test with local test credentials; database name must stay reading_club_test.
+./scripts/setup_test_db.sh
+set -a; source .env.test; set +a
+pytest -m integration
+```
+
+The setup script accepts exported variables (for CI) or `.env.test`, with
+exported values taking precedence. It refuses every database name except
+`reading_club_test`, creates it with the role from `TEST_DATABASE_URL` as owner,
+and fails if an existing database has a different owner. It then runs Alembic
+migrations. When configured, `TEST_DATABASE_ADMIN_URL` must target PostgreSQL's
+`postgres` maintenance database. `.env.test` is ignored; only the placeholder
+example is tracked.
 
 ## Migrations
 
